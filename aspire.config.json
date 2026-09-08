@@ -1,0 +1,6 @@
+{
+  "OLLAMA_ENDPOINT": "http://localhost:10905",
+  "appHost": {
+    "path": "src/AppHost/AppHost.csproj"
+  }
+}

@@ -1,0 +1,184 @@
+### A2A POC — all endpoints in one file
+### Set the base URLs to the ports Aspire assigns (see the Aspire dashboard),
+### or use the local dev fallbacks below when running each project directly.
+
+@orchestrator = http://localhost:5200
+@assortment = http://localhost:5210
+@supplychain = http://localhost:5220
+
+##############################################################################
+# ORCHESTRATOR
+# Serves the chat UI and exposes the multi-agent chat + agent discovery API.
+##############################################################################
+
+### Chat UI (HTML)
+GET {{orchestrator}}/
+Accept: text/html
+
+### List discovered agents (service name, URL, availability, resolved card)
+GET {{orchestrator}}/api/agents
+Accept: application/json
+
+### Send a chat message (new conversation)
+### Omit threadId to start a new thread; the response returns the generated id.
+# @name newChat
+POST {{orchestrator}}/api/chat
+Content-Type: application/json
+
+{
+  "threadId": null,
+  "message": "Is winter coat stock aligned with the active catalog? and And how many are in transit?"
+}
+
+### Single-domain question (routes to one agent)
+POST {{orchestrator}}/api/chat
+Content-Type: application/json
+
+{
+  "threadId": null,
+  "message": "List all products currently active in the catalog."
+}
+
+### Off-domain question (no agent matches, direct answer)
+POST {{orchestrator}}/api/chat
+Content-Type: application/json
+
+{
+  "threadId": null,
+  "message": "What is the capital of France?"
+}
+
+##############################################################################
+# ASSORTMENT AGENT (A2A server)
+# Catalog / product / store-coverage specialist.
+##############################################################################
+
+### Discovery: public AgentCard (well-known)
+### The orchestrator's AgentRegistry resolves this via A2ACardResolver.
+GET {{assortment}}/.well-known/agent-card.json
+Accept: application/json
+
+### A2A: send a message (JSON-RPC) — product lookup
+POST {{assortment}}/
+Content-Type: application/json
+
+{
+  "jsonrpc": "2.0",
+  "id": "1",
+  "method": "SendMessage",
+  "params": {
+    "message": {
+      "role": "ROLE_USER",
+      "messageId": "asst-msg-1",
+      "parts": [
+        { "text": "Look up the product \"winter coat\": SKU, category, active status, and which stores carry it." }
+      ]
+    }
+  }
+}
+
+### A2A: list active catalog
+POST {{assortment}}/
+Content-Type: application/json
+
+{
+  "jsonrpc": "2.0",
+  "id": "2",
+  "method": "SendMessage",
+  "params": {
+    "message": {
+      "role": "ROLE_USER",
+      "messageId": "asst-msg-2",
+      "parts": [
+        { "text": "List all products currently active in the store assortment." }
+      ]
+    }
+  }
+}
+
+### A2A: streaming message (SSE)
+POST {{assortment}}/
+Content-Type: application/json
+Accept: text/event-stream
+
+{
+  "jsonrpc": "2.0",
+  "id": "3",
+  "method": "SendStreamingMessage",
+  "params": {
+    "message": {
+      "role": "ROLE_USER",
+      "messageId": "asst-msg-3",
+      "parts": [
+        { "text": "Which stores carry the running shoes?" }
+      ]
+    }
+  }
+}
+
+##############################################################################
+# SUPPLYCHAIN AGENT (A2A server)
+# Warehouse stock / shipment / velocity specialist.
+##############################################################################
+
+### Discovery: public AgentCard (well-known)
+GET {{supplychain}}/.well-known/agent-card.json
+Accept: application/json
+
+### A2A: get stock for a product (JSON-RPC)
+POST {{supplychain}}/
+Content-Type: application/json
+
+{
+  "jsonrpc": "2.0",
+  "id": "1",
+  "method": "SendMessage",
+  "params": {
+    "message": {
+      "role": "ROLE_USER",
+      "messageId": "sc-msg-1",
+      "parts": [
+        { "text": "Get warehouse on-hand, in-transit, and weekly velocity for the winter coat." }
+      ]
+    }
+  }
+}
+
+### A2A: list inbound shipments
+POST {{supplychain}}/
+Content-Type: application/json
+
+{
+  "jsonrpc": "2.0",
+  "id": "2",
+  "method": "SendMessage",
+  "params": {
+    "message": {
+      "role": "ROLE_USER",
+      "messageId": "sc-msg-2",
+      "parts": [
+        { "text": "List inbound shipments and their delivery status." }
+      ]
+    }
+  }
+}
+
+### A2A: streaming message (SSE)
+POST {{supplychain}}/
+Content-Type: application/json
+Accept: text/event-stream
+
+{
+  "jsonrpc": "2.0",
+  "id": "3",
+  "method": "SendStreamingMessage",
+  "params": {
+    "message": {
+      "role": "ROLE_USER",
+      "messageId": "sc-msg-3",
+      "parts": [
+        { "text": "Is the running shoes stock running low relative to its velocity?" }
+      ]
+    }
+  }
+}
