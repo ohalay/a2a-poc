@@ -3,7 +3,7 @@ using System.Diagnostics;
 using A2A;
 using Microsoft.Extensions.AI;
 
-namespace Orchestrator.Core;
+namespace Orchestrator;
 
 /// <summary>
 /// Orchestrates a request by exposing every available remote A2A agent as a

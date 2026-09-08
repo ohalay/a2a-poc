@@ -1,7 +1,6 @@
 using Microsoft.Extensions.AI;
 using OpenAI;
 using Orchestrator;
-using Orchestrator.Core;
 using System.ClientModel;
 
 var builder = WebApplication.CreateBuilder(args);
