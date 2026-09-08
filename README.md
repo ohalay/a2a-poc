@@ -1,12 +1,5 @@
 # A2A Multi-Agent Orchestrator
-
-A .NET 10 proof-of-concept for the [Agent-to-Agent (A2A) protocol](https://a2aproject.github.io/A2A/).
-A central **orchestrator** discovers independent **domain agents** over HTTP, exposes each as a tool to
-one LLM loop, and lets the model call the specialists it needs (in parallel) before synthesizing one
-answer. All LLM inference runs locally through **Ollama** (`llama3.2`).
-
-See [`docs/architecture.md`](docs/architecture.md) for diagrams and the full request flow, and
-[`AGENTS.md`](AGENTS.md) for conventions.
+A .NET 10 PoC for the A2A. **Orchestrator** discovers **agents** over HTTP, exposes each as a tool to one LLM loop, and aggregate to one response. All LLM inference runs locally through **Ollama** (`llama3.2`).
 
 ## Architecture
 
@@ -46,6 +39,9 @@ graph TB
     AH -->|LLM: tool-calling| Ollama
     SH -->|LLM: tool-calling| Ollama
 ```
+
+See [`docs/architecture.md`](docs/architecture.md) for diagrams and the full request flow, and
+[`AGENTS.md`](AGENTS.md) for conventions.
 
 ## How it works
 
