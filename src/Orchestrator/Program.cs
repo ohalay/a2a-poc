@@ -15,9 +15,12 @@ var openAiClient = new OpenAIClient(
     new ApiKeyCredential("ollama"),
     new OpenAIClientOptions { Endpoint = new Uri($"{ollamaEndpoint.TrimEnd('/')}/v1") });
 
+// OpenTelemetry wraps the inner chat client so the router/aggregation LLM
+// ("chat") calls are traced. The orchestrator adds its OWN FunctionInvokingChatClient
+// on top (see OrchestrationService), so we deliberately do NOT add
+// UseFunctionInvocation here — doing so would run the tool loop twice.
 builder.Services.AddChatClient(openAiClient.GetChatClient(modelId)
     .AsIChatClient())
-    .UseFunctionInvocation()
     .UseOpenTelemetry(configure: o => o.EnableSensitiveData = true);
 
 builder.Services.AddHttpClient();

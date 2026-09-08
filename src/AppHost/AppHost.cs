@@ -8,7 +8,7 @@ var builder = DistributedApplication.CreateBuilder(args);
 // is propagated to all three services below. OLLAMA_MODEL is likewise optional.
 var ollamaEndpoint = builder.Configuration["OLLAMA_ENDPOINT"]
     ?? Environment.GetEnvironmentVariable("OLLAMA_ENDPOINT")
-    ?? "http://localhost:10905";
+    ?? "http://localhost:30212";
 var ollamaModel = builder.Configuration["OLLAMA_MODEL"]
     ?? Environment.GetEnvironmentVariable("OLLAMA_MODEL")
     ?? ServiceNames.OllamaModel;
@@ -25,7 +25,6 @@ const string AgentCardPath = "/.well-known/agent-card.json";
 var assortment = builder.AddProject<Projects.Agent_Assortment>(ServiceNames.AssortmentAgent)
     .WithEnvironment("OLLAMA_ENDPOINT", ollamaEndpoint)
     .WithEnvironment("OLLAMA_MODEL", ollamaModel)
-    .WithHttpHealthCheck(path: AgentCardPath)
     .WithUrlForEndpoint("http", url =>
     {
         url.Url = AgentCardPath;
@@ -35,7 +34,6 @@ var assortment = builder.AddProject<Projects.Agent_Assortment>(ServiceNames.Asso
 var supplyChain = builder.AddProject<Projects.Agent_SupplyChain>(ServiceNames.SupplyChainAgent)
     .WithEnvironment("OLLAMA_ENDPOINT", ollamaEndpoint)
     .WithEnvironment("OLLAMA_MODEL", ollamaModel)
-    .WithHttpHealthCheck(path: AgentCardPath)
     .WithUrlForEndpoint("http", url =>
     {
         url.Url = AgentCardPath;

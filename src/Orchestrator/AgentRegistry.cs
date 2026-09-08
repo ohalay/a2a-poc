@@ -22,7 +22,7 @@ public sealed class AgentRegistry(IHttpClientFactory httpClientFactory, ILogger<
     /// <summary>Resolves any not-yet-resolved agent cards. Safe to call repeatedly.</summary>
     public async Task<IReadOnlyCollection<RemoteAgent>> Register(CancellationToken ct = default)
     {
-        foreach (var agentUrl in configuration.GetValue<string[]>("AGENTS") ?? [])
+        foreach (var agentUrl in configuration.GetSection("AGENTS").Get<string[]>() ?? [])
         {
             try
             {

@@ -35,42 +35,69 @@ public sealed class OrchestrationService(
 
     public async Task<string> HandleAsync(ChatThread thread, string userMessage, CancellationToken ct)
     {
+        // Root span for the whole orchestration turn. Every downstream span
+        // (the router/aggregator LLM "chat" call, the tool-invocation loop, each
+        // per-agent "dispatch", and the remote agents' own spans) nests under
+        // this one, giving a single end-to-end trace tree in the dashboard:
+        //   orchestrate.handle
+        //     -> chat <model>            (router/aggregator LLM)
+        //        -> tool call            (FunctionInvokingChatClient)
+        //           -> dispatch <Agent>  (A2A client span; propagates traceparent)
+        //              -> <agent> handle_task -> chat <model> -> tool call
+        using var activity = ActivitySource.StartActivity("orchestrate.handle", ActivityKind.Server);
+        activity?.SetTag("a2a.thread.id", thread.ThreadId);
+        activity?.SetTag("a2a.user.message", userMessage);
+
         var agents = await registry.GetAgents(ct);
 
         var tools = agents
             .Select(ToTool)
             .Cast<AITool>()
             .ToList();
+        activity?.SetTag("a2a.available_agents", tools.Count);
 
         var messages = new List<ChatMessage> { new(ChatRole.System, SystemPrompt) };
-        using (var activity = ActivitySource.StartActivity("get chat history"))
+        // Make "the orchestrator works with history" visible as its own span.
+        using (var historyActivity = ActivitySource.StartActivity("orchestrate.history", ActivityKind.Internal))
         {
-            foreach (var turn in thread.Turns.TakeLast(10))
+            var priorTurns = thread.Turns.TakeLast(10).ToList();
+            foreach (var turn in priorTurns)
             {
                 var role = turn.Role == "assistant" ? ChatRole.Assistant : ChatRole.User;
                 messages.Add(new ChatMessage(role, turn.Content));
             }
-            messages.Add(new ChatMessage(ChatRole.User, userMessage));
-            thread.Turns.Add(new ChatTurn("user", userMessage, DateTimeOffset.UtcNow));
+            historyActivity?.SetTag("a2a.history.total_turns", thread.Turns.Count);
+            historyActivity?.SetTag("a2a.history.replayed_turns", priorTurns.Count);
         }
+        messages.Add(new ChatMessage(ChatRole.User, userMessage));
+        thread.Turns.Add(new ChatTurn("user", userMessage, DateTimeOffset.UtcNow));
 
-        // Wrap the injected client (already OpenTelemetry-instrumented in DI) in the
-        // function-invocation loop. FunctionInvokingChatClient emits an "execute_tool"
-        // span per agent-tool call, and the base client emits the router/aggregation
-        // "chat" LLM spans — so the whole route -> dispatch -> aggregate flow is traced.
-        // FunctionInvokingChatClient drives the tool-call loop. Allow enough
-        // iterations for the model to call several agents in sequence, and enable
-        // concurrent invocation so multiple agent calls in one turn run in parallel.
+        // Drive the tool-call loop with FunctionInvokingChatClient, then wrap the
+        // WHOLE loop with OpenTelemetry. Order matters: the first Use* in the
+        // builder chain is the OUTERMOST decorator, so putting UseOpenTelemetry
+        // first means it observes each tool invocation (the "tool call" spans) as
+        // well as the LLM "chat" spans. Wrapping a bare FunctionInvokingChatClient
+        // WITHOUT this OTel layer (the previous behavior) is exactly why the
+        // tool-call spans never showed up in the dashboard.
+        //
+        // Allow enough iterations for the model to call several agents in
+        // sequence, and allow concurrent invocation so multiple agent calls in
+        // one turn run in parallel.
         using var client = new FunctionInvokingChatClient(chatClient)
         {
             MaximumIterationsPerRequest = 10,
             AllowConcurrentInvocation = true,
-        };
+        }
+        .AsBuilder()
+        .UseOpenTelemetry(configure: o => o.EnableSensitiveData = true)
+        .Build();
+
         var response = await client.GetResponseAsync(
             messages,
             new ChatOptions { Tools = tools, AllowMultipleToolCalls = true },
             ct);
 
+        activity?.SetTag("a2a.answer.length", response.Text.Length);
         return response.Text;
     }
 
@@ -86,14 +113,28 @@ public sealed class OrchestrationService(
             CancellationToken ct) =>
         {
             logger.LogInformation("Dispatching A2A task to {Agent}: {Request}", agent.Card.Name, request);
+
+            // Explicit CLIENT span around the remote A2A call. Because this span
+            // is active when the A2AClient's HttpClient sends the request, the
+            // HttpClient OpenTelemetry instrumentation injects the W3C
+            // `traceparent` header, so the remote agent's ASP.NET Core
+            // instrumentation continues THIS trace instead of starting a
+            // disconnected one. That is what stitches orchestrator -> agent into
+            // one end-to-end trace tree in the Aspire dashboard.
+            using var dispatchActivity = ActivitySource.StartActivity(
+                $"dispatch {agent.Card.Name}", ActivityKind.Client);
+            dispatchActivity?.SetTag("a2a.agent.name", agent.Card.Name);
+            dispatchActivity?.SetTag("a2a.request", request);
             try
             {
                 var response = await agent.Client!.SendMessageAsync(request, Role.User, cancellationToken: ct);
                 var text = ExtractText(response);
+                dispatchActivity?.SetTag("a2a.response.length", text.Length);
                 return text;
             }
             catch (Exception ex)
             {
+                dispatchActivity?.SetStatus(ActivityStatusCode.Error, ex.Message);
                 logger.LogError(ex, "Dispatch to {Agent} failed", agent.Card.Name);
                 return $"(agent unavailable: {ex.Message})";
             }

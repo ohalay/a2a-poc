@@ -63,16 +63,20 @@ public static class Extensions
             {
                 metrics.AddAspNetCoreInstrumentation()
                        .AddHttpClientInstrumentation()
-                       .AddRuntimeInstrumentation();
+                       .AddRuntimeInstrumentation()
+                       .AddMeter(ExtensionsAiSourceName);
             })
             .WithTracing(tracing =>
             {
                 tracing.AddSource(builder.Environment.ApplicationName)
-                       .AddSource(ActivitySourceNamePrefix + "*")
-                       .AddSource(ExtensionsAiSourceName)
-                       .AddSource(A2ASdkSourceName)
                        .AddAspNetCoreInstrumentation()
-                       .AddHttpClientInstrumentation();
+                       .AddHttpClientInstrumentation()
+                       // "A2A*" wildcard covers the A2A SDK ("A2A", "A2A.AspNetCore")
+                       // plus our own custom sources ("A2A.Orchestrator",
+                       // "A2A.Agent.Assortment", "A2A.Agent.SupplyChain").
+                       .AddSource(ActivitySourceNamePrefix + "*")
+                       // Microsoft.Extensions.AI chat/tool spans.
+                       .AddSource(ExtensionsAiSourceName);
             });
 
         builder.AddOpenTelemetryExporters();

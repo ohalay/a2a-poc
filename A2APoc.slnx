@@ -4,9 +4,7 @@
     <Project Path="src/Agent.SupplyChain/Agent.SupplyChain.csproj" />
     <Project Path="src/AppHost/AppHost.csproj" />
     <Project Path="src/Orchestrator/Orchestrator.csproj" />
+    <Project Path="src/ServiceDefaults/ServiceDefaults.csproj" />
     <Project Path="src/Shared/Shared.csproj" />
-  </Folder>
-  <Folder Name="/tests/">
-    <Project Path="tests/Orchestrator.Tests/Orchestrator.Tests.csproj" />
   </Folder>
 </Solution>
