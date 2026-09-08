@@ -35,26 +35,12 @@ public sealed class OrchestrationService(
 
     public async Task<string> HandleAsync(ChatThread thread, string userMessage, CancellationToken ct)
     {
-        // Root span for the whole orchestration turn. Every downstream span
-        // (the router/aggregator LLM "chat" call, the tool-invocation loop, each
-        // per-agent "dispatch", and the remote agents' own spans) nests under
-        // this one, giving a single end-to-end trace tree in the dashboard:
-        //   orchestrate.handle
-        //     -> chat <model>            (router/aggregator LLM)
-        //        -> tool call            (FunctionInvokingChatClient)
-        //           -> dispatch <Agent>  (A2A client span; propagates traceparent)
-        //              -> <agent> handle_task -> chat <model> -> tool call
-        using var activity = ActivitySource.StartActivity("orchestrate.handle", ActivityKind.Server);
-        activity?.SetTag("a2a.thread.id", thread.ThreadId);
-        activity?.SetTag("a2a.user.message", userMessage);
-
         var agents = await registry.GetAgents(ct);
 
         var tools = agents
             .Select(ToTool)
             .Cast<AITool>()
             .ToList();
-        activity?.SetTag("a2a.available_agents", tools.Count);
 
         var messages = new List<ChatMessage> { new(ChatRole.System, SystemPrompt) };
         // Make "the orchestrator works with history" visible as its own span.
@@ -97,7 +83,6 @@ public sealed class OrchestrationService(
             new ChatOptions { Tools = tools, AllowMultipleToolCalls = true },
             ct);
 
-        activity?.SetTag("a2a.answer.length", response.Text.Length);
         return response.Text;
     }
 
