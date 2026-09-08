@@ -114,27 +114,14 @@ public sealed class OrchestrationService(
         {
             logger.LogInformation("Dispatching A2A task to {Agent}: {Request}", agent.Card.Name, request);
 
-            // Explicit CLIENT span around the remote A2A call. Because this span
-            // is active when the A2AClient's HttpClient sends the request, the
-            // HttpClient OpenTelemetry instrumentation injects the W3C
-            // `traceparent` header, so the remote agent's ASP.NET Core
-            // instrumentation continues THIS trace instead of starting a
-            // disconnected one. That is what stitches orchestrator -> agent into
-            // one end-to-end trace tree in the Aspire dashboard.
-            using var dispatchActivity = ActivitySource.StartActivity(
-                $"dispatch {agent.Card.Name}", ActivityKind.Client);
-            dispatchActivity?.SetTag("a2a.agent.name", agent.Card.Name);
-            dispatchActivity?.SetTag("a2a.request", request);
             try
             {
                 var response = await agent.Client!.SendMessageAsync(request, Role.User, cancellationToken: ct);
                 var text = ExtractText(response);
-                dispatchActivity?.SetTag("a2a.response.length", text.Length);
                 return text;
             }
             catch (Exception ex)
             {
-                dispatchActivity?.SetStatus(ActivityStatusCode.Error, ex.Message);
                 logger.LogError(ex, "Dispatch to {Agent} failed", agent.Card.Name);
                 return $"(agent unavailable: {ex.Message})";
             }
