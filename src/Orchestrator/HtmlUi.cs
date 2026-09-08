@@ -53,12 +53,28 @@ public static class HtmlUi
     }
 
     async function loadAgents() {
+      const el = document.getElementById('agents');
       try {
         const res = await fetch('/api/agents');
+        if (!res.ok) throw new Error('HTTP ' + res.status);
         const agents = await res.json();
-        document.getElementById('agents').textContent =
-          'Agents: ' + agents.map(a => (a.name || a.serviceName) + (a.isAvailable ? ' ✓' : ' ✗')).join('  |  ');
-      } catch { document.getElementById('agents').textContent = 'Could not load agents.'; }
+        if (!Array.isArray(agents) || agents.length === 0) {
+          el.textContent = 'No agents resolved yet.';
+          return;
+        }
+        el.textContent = '';
+        el.append('Agents: ');
+        agents.forEach((a, i) => {
+          if (i > 0) el.append('  |  ');
+          const span = document.createElement('span');
+          span.textContent = (a.name || 'unknown') + ' \u2713';
+          const details = [a.description, (a.skills || []).join(', ')].filter(Boolean).join(' \u2014 ');
+          if (details) span.title = details;
+          el.appendChild(span);
+        });
+      } catch (err) {
+        el.textContent = 'Could not load agents: ' + err.message;
+      }
     }
     loadAgents();
 
@@ -75,11 +91,12 @@ public static class HtmlUi
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ threadId, message: msg })
         });
+        if (!res.ok) throw new Error('HTTP ' + res.status);
         const data = await res.json();
         threadId = data.threadId;
-        add('assistant', data.answer);
+        add('assistant', data.answer ?? '(empty response)');
       } catch (err) {
-        add('assistant', 'Error: ' + err);
+        add('assistant', 'Error: ' + (err.message || err));
       } finally {
         send.disabled = false;
         input.focus();
