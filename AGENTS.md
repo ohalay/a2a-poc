@@ -100,10 +100,11 @@ The `/api/chat` endpoint appends the assistant turn after `HandleAsync` returns.
 
 ## Observability / tracing
 
-OpenTelemetry is wired in `ServiceDefaults/Extensions.cs`. It registers three trace sources: the app
+OpenTelemetry is wired in `ServiceDefaults/Extensions.cs`. It registers four trace sources: the app
 name, `A2A*` (wildcard — the A2A SDK's `A2A`/`A2A.AspNetCore` spans plus any custom `A2A.*` source),
-and `Experimental.Microsoft.Extensions.AI` (LLM chat + tool spans). One end-to-end trace tree is
-produced per request, viewable in the Aspire dashboard:
+`Experimental.Microsoft.Extensions.AI` (the LLM `chat <model>` span from `OpenTelemetryChatClient`),
+and `Microsoft.Extensions.AI.FunctionInvokingChatClient` (the per-tool-call `execute_tool` spans). One
+end-to-end trace tree is produced per request, viewable in the Aspire dashboard:
 
 ```
 POST /api/chat (Server)                  auto-instrumented ASP.NET Core span
@@ -116,10 +117,14 @@ POST /api/chat (Server)                  auto-instrumented ASP.NET Core span
 ```
 
 Conventions that keep this intact:
-- **OTel is the OUTERMOST chat-client decorator.** In `OrchestrationService`, the chat client is a
-  `FunctionInvokingChatClient` wrapped by `.UseOpenTelemetry(...)` (the first `Use*` is outermost), so
-  OTel observes the whole tool loop. Wrapping a bare `FunctionInvokingChatClient` without an OTel layer
-  is why tool spans went missing before.
+- **The `chat` span and the `execute_tool` spans come from DIFFERENT sources.** In
+  Microsoft.Extensions.AI 10.9.0, `.UseOpenTelemetry(...)` adds an `OpenTelemetryChatClient` that emits
+  only the `chat <model>` span (source `Experimental.Microsoft.Extensions.AI`). The per-tool-call
+  `execute_tool <agent>` span is emitted by `FunctionInvokingChatClient` itself, under the SEPARATE
+  source `Microsoft.Extensions.AI.FunctionInvokingChatClient`. Both sources must be registered in
+  `ServiceDefaults` or the tool spans are dropped — registering only the chat source (the previous
+  behavior) is exactly why the `execute_tool` spans never showed up between `chat <model>` and
+  `RPC /SendMessage`. Decorator order does NOT affect the tool span in this version.
 - **The orchestrator owns its own tool loop.** `OrchestrationService.HandleAsync` builds the
   `FunctionInvokingChatClient`; `Orchestrator/Program.cs` therefore does NOT call
   `UseFunctionInvocation` (that would run the loop twice). The agents' own `Program.cs` files DO call
